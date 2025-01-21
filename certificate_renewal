@@ -1,1 +1,39 @@
-Get-Certificate -Template SslWebServer -DnsName www.contoso.com,www.fabrikam.com -Url https://www.contoso.com/Policy/service.svc -Credential $up -CertStoreLocation cert:\LocalMachine\My
+# Prompt for user credentials to authenticate with the Certificate Authority (CA)
+$up = Get-Credential
+
+# Request a new certificate using the SSL Web Server template
+$enrollResult1 = Get-Certificate -Template SslWebServer `
+    -DnsName "www.contoso.com", "www.fabrikam.com" `
+    -Url "https://www.contoso.com/Policy/service.svc" `
+    -Credential $up `
+    -CertStoreLocation cert:\LocalMachine\My
+
+# Retrieve a specific certificate from the LocalMachine store by its thumbprint
+$cert = Get-ChildItem -Path cert:\LocalMachine\My\EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF
+
+# Renew the certificate using the SSL Web Server template
+$enrollResult2 = Get-Certificate -Template SslWebServer `
+    -DnsName "www.contoso.com" `
+    -Url "https://www.contoso.com/policy/service.svc" `
+    -Credential $cert `
+    -CertStoreLocation cert:\LocalMachine\My
+
+# Navigate to the certificate store
+Set-Location -Path cert:\LocalMachine\My
+
+# Request another certificate using the WorkstationTemplate
+$enrollResult3 = Get-Certificate -Template WorkstationTemplate `
+    -Url "https://www.contoso.com/service.svc"
+
+# Retrieve a pending certificate request by its thumbprint
+$request = Get-ChildItem -Path cert:\LocalMachine\Request\EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF
+
+# Prompt for user credentials again if required for request approval
+$up = Get-Credential
+
+# Approve the pending certificate request
+Get-Certificate -Request $request -Credential $up
+
+# Retrieve and complete the pending certificate request
+$request = Get-ChildItem -Path cert:\LocalMachine\Request\EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF
+Get-Certificate -Request $request
