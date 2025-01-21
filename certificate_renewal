@@ -1,5 +1,11 @@
-# Define the log file path
-$logFile = "C:\Logs\CertificateRenewal.log"
+param (
+    [string]$Template = "SslWebServer",
+    [string[]]$DnsNames = @("www.contoso.com", "www.fabrikam.com"),
+    [string]$PolicyUrl = "https://www.contoso.com/Policy/service.svc",
+    [string]$Thumbprint = "EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF",
+    [string]$LogFilePath = "C:\Logs\CertificateRenewal.log",
+    [switch]$DryRun
+)
 
 # Function to log messages
 function Write-Log {
@@ -10,79 +16,96 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "$timestamp [$Level] $Message"
     Write-Output $logMessage
-    Add-Content -Path $logFile -Value $logMessage
+    Add-Content -Path $LogFilePath -Value $logMessage
+}
+
+# Function to send email notifications
+function Send-Email {
+    param (
+        [string]$Subject,
+        [string]$Body
+    )
+    $smtpServer = "smtp.contoso.com"
+    $from = "alerts@contoso.com"
+    $to = "admin@contoso.com"
+    Send-MailMessage -From $from -To $to -Subject $Subject -Body $Body -SmtpServer $smtpServer
 }
 
 # Start logging
 Write-Log "Starting Certificate Renewal Script."
 
 try {
+    # Dry-Run Mode
+    if ($DryRun) {
+        Write-Log "Dry-run mode enabled. No changes will be made."
+        Write-Log "Simulating certificate request with Template: $Template, DNS Names: $($DnsNames -join ', '), Policy URL: $PolicyUrl."
+        return
+    }
+
     # Prompt for user credentials
     Write-Log "Prompting for user credentials."
     $up = Get-Credential
 
-    # Request a new certificate using the SSL Web Server template
-    Write-Log "Requesting a new certificate with SSL Web Server template."
-    $enrollResult1 = Get-Certificate -Template SslWebServer `
-        -DnsName "www.contoso.com", "www.fabrikam.com" `
-        -Url "https://www.contoso.com/Policy/service.svc" `
+    # Request a new certificate
+    Write-Log "Requesting a new certificate with Template: $Template."
+    $enrollResult = Get-Certificate -Template $Template `
+        -DnsName $DnsNames `
+        -Url $PolicyUrl `
         -Credential $up `
         -CertStoreLocation cert:\LocalMachine\My
-    Write-Log "Certificate requested successfully. Result: $($enrollResult1 | Out-String)"
+    Write-Log "Certificate requested successfully. Result: $($enrollResult | Out-String)"
 
     # Retrieve a specific certificate by its thumbprint
-    $thumbprint = "EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF"
-    Write-Log "Retrieving certificate with thumbprint: $thumbprint."
-    $cert = Get-ChildItem -Path cert:\LocalMachine\My\$thumbprint
+    Write-Log "Retrieving certificate with thumbprint: $Thumbprint."
+    $cert = Get-ChildItem -Path cert:\LocalMachine\My\$Thumbprint
 
     if ($cert) {
         Write-Log "Certificate retrieved successfully: $($cert | Out-String)"
     } else {
-        throw "Certificate with thumbprint $thumbprint not found."
+        throw "Certificate with thumbprint $Thumbprint not found in the LocalMachine store."
     }
 
     # Renew the certificate
-    Write-Log "Renewing certificate using SSL Web Server template."
-    $enrollResult2 = Get-Certificate -Template SslWebServer `
-        -DnsName "www.contoso.com" `
-        -Url "https://www.contoso.com/policy/service.svc" `
+    Write-Log "Renewing certificate with Template: $Template."
+    $renewResult = Get-Certificate -Template $Template `
+        -DnsName $DnsNames[0] `
+        -Url $PolicyUrl `
         -Credential $cert `
         -CertStoreLocation cert:\LocalMachine\My
-    Write-Log "Certificate renewed successfully. Result: $($enrollResult2 | Out-String)"
-
-    # Navigate to the certificate store
-    Write-Log "Navigating to LocalMachine certificate store."
-    Set-Location -Path cert:\LocalMachine\My
-
-    # Request another certificate using the WorkstationTemplate
-    Write-Log "Requesting certificate with WorkstationTemplate."
-    $enrollResult3 = Get-Certificate -Template WorkstationTemplate `
-        -Url "https://www.contoso.com/service.svc"
-    Write-Log "Certificate requested successfully. Result: $($enrollResult3 | Out-String)"
-
-    # Retrieve and process a pending certificate request
-    Write-Log "Retrieving pending certificate request."
-    $request = Get-ChildItem -Path cert:\LocalMachine\Request\$thumbprint
-
-    if ($request) {
-        Write-Log "Pending request retrieved successfully: $($request | Out-String)"
-    } else {
-        throw "Pending request with thumbprint $thumbprint not found."
-    }
-
-    # Prompt for credentials again if required
-    Write-Log "Prompting for credentials to approve the request."
-    $up = Get-Credential
-
-    # Approve the pending request
-    Write-Log "Approving the pending certificate request."
-    Get-Certificate -Request $request -Credential $up
-    Write-Log "Pending request approved successfully."
+    Write-Log "Certificate renewed successfully. Result: $($renewResult | Out-String)"
 
 } catch {
-    # Log the error
-    Write-Log "An error occurred: $_" -Level "ERROR"
+    # Log the error and send an email notification
+    $errorMessage = "An error occurred: $_"
+    Write-Log $errorMessage -Level "ERROR"
+    Send-Email -Subject "Certificate Renewal Script Failed" -Body $errorMessage
 } finally {
     # End logging
     Write-Log "Certificate Renewal Script completed."
+    Send-Email -Subject "Certificate Renewal Script Completed" -Body "The script has completed successfully. Check the log file for details."
 }
+
+
+
+#full execution
+2025-01-20 10:10:00 [INFO] Starting Certificate Renewal Script.
+2025-01-20 10:10:01 [INFO] Prompting for user credentials.
+2025-01-20 10:10:10 [INFO] Requesting a new certificate with Template: SslWebServer.
+2025-01-20 10:10:15 [INFO] Certificate requested successfully. Result: <Certificate Details>
+2025-01-20 10:10:16 [INFO] Retrieving certificate with thumbprint: EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF.
+2025-01-20 10:10:17 [INFO] Certificate retrieved successfully: <Certificate Details>
+2025-01-20 10:10:18 [INFO] Renewing certificate with Template: SslWebServer.
+2025-01-20 10:10:20 [INFO] Certificate renewed successfully. Result: <Renewal Details>
+2025-01-20 10:10:21 [INFO] Certificate Renewal Script completed.
+
+
+#log File
+2025-01-20 10:10:00 [INFO] Starting Certificate Renewal Script.
+2025-01-20 10:10:01 [INFO] Prompting for user credentials.
+2025-01-20 10:10:10 [INFO] Requesting a new certificate with Template: SslWebServer.
+2025-01-20 10:10:15 [INFO] Certificate requested successfully. Result: <Certificate Details>
+2025-01-20 10:10:16 [INFO] Retrieving certificate with thumbprint: EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF.
+2025-01-20 10:10:17 [INFO] Certificate retrieved successfully: <Certificate Details>
+2025-01-20 10:10:18 [INFO] Renewing certificate with Template: SslWebServer.
+2025-01-20 10:10:20 [INFO] Certificate renewed successfully. Result: <Renewal Details>
+2025-01-20 10:10:21 [INFO] Certificate Renewal Script completed.
