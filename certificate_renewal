@@ -1,39 +1,88 @@
-# Prompt for user credentials to authenticate with the Certificate Authority (CA)
-$up = Get-Credential
+# Define the log file path
+$logFile = "C:\Logs\CertificateRenewal.log"
 
-# Request a new certificate using the SSL Web Server template
-$enrollResult1 = Get-Certificate -Template SslWebServer `
-    -DnsName "www.contoso.com", "www.fabrikam.com" `
-    -Url "https://www.contoso.com/Policy/service.svc" `
-    -Credential $up `
-    -CertStoreLocation cert:\LocalMachine\My
+# Function to log messages
+function Write-Log {
+    param (
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "$timestamp [$Level] $Message"
+    Write-Output $logMessage
+    Add-Content -Path $logFile -Value $logMessage
+}
 
-# Retrieve a specific certificate from the LocalMachine store by its thumbprint
-$cert = Get-ChildItem -Path cert:\LocalMachine\My\EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF
+# Start logging
+Write-Log "Starting Certificate Renewal Script."
 
-# Renew the certificate using the SSL Web Server template
-$enrollResult2 = Get-Certificate -Template SslWebServer `
-    -DnsName "www.contoso.com" `
-    -Url "https://www.contoso.com/policy/service.svc" `
-    -Credential $cert `
-    -CertStoreLocation cert:\LocalMachine\My
+try {
+    # Prompt for user credentials
+    Write-Log "Prompting for user credentials."
+    $up = Get-Credential
 
-# Navigate to the certificate store
-Set-Location -Path cert:\LocalMachine\My
+    # Request a new certificate using the SSL Web Server template
+    Write-Log "Requesting a new certificate with SSL Web Server template."
+    $enrollResult1 = Get-Certificate -Template SslWebServer `
+        -DnsName "www.contoso.com", "www.fabrikam.com" `
+        -Url "https://www.contoso.com/Policy/service.svc" `
+        -Credential $up `
+        -CertStoreLocation cert:\LocalMachine\My
+    Write-Log "Certificate requested successfully. Result: $($enrollResult1 | Out-String)"
 
-# Request another certificate using the WorkstationTemplate
-$enrollResult3 = Get-Certificate -Template WorkstationTemplate `
-    -Url "https://www.contoso.com/service.svc"
+    # Retrieve a specific certificate by its thumbprint
+    $thumbprint = "EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF"
+    Write-Log "Retrieving certificate with thumbprint: $thumbprint."
+    $cert = Get-ChildItem -Path cert:\LocalMachine\My\$thumbprint
 
-# Retrieve a pending certificate request by its thumbprint
-$request = Get-ChildItem -Path cert:\LocalMachine\Request\EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF
+    if ($cert) {
+        Write-Log "Certificate retrieved successfully: $($cert | Out-String)"
+    } else {
+        throw "Certificate with thumbprint $thumbprint not found."
+    }
 
-# Prompt for user credentials again if required for request approval
-$up = Get-Credential
+    # Renew the certificate
+    Write-Log "Renewing certificate using SSL Web Server template."
+    $enrollResult2 = Get-Certificate -Template SslWebServer `
+        -DnsName "www.contoso.com" `
+        -Url "https://www.contoso.com/policy/service.svc" `
+        -Credential $cert `
+        -CertStoreLocation cert:\LocalMachine\My
+    Write-Log "Certificate renewed successfully. Result: $($enrollResult2 | Out-String)"
 
-# Approve the pending certificate request
-Get-Certificate -Request $request -Credential $up
+    # Navigate to the certificate store
+    Write-Log "Navigating to LocalMachine certificate store."
+    Set-Location -Path cert:\LocalMachine\My
 
-# Retrieve and complete the pending certificate request
-$request = Get-ChildItem -Path cert:\LocalMachine\Request\EEDEF61D4FF6EDBAAD538BB08CCAADDC3EE28FF
-Get-Certificate -Request $request
+    # Request another certificate using the WorkstationTemplate
+    Write-Log "Requesting certificate with WorkstationTemplate."
+    $enrollResult3 = Get-Certificate -Template WorkstationTemplate `
+        -Url "https://www.contoso.com/service.svc"
+    Write-Log "Certificate requested successfully. Result: $($enrollResult3 | Out-String)"
+
+    # Retrieve and process a pending certificate request
+    Write-Log "Retrieving pending certificate request."
+    $request = Get-ChildItem -Path cert:\LocalMachine\Request\$thumbprint
+
+    if ($request) {
+        Write-Log "Pending request retrieved successfully: $($request | Out-String)"
+    } else {
+        throw "Pending request with thumbprint $thumbprint not found."
+    }
+
+    # Prompt for credentials again if required
+    Write-Log "Prompting for credentials to approve the request."
+    $up = Get-Credential
+
+    # Approve the pending request
+    Write-Log "Approving the pending certificate request."
+    Get-Certificate -Request $request -Credential $up
+    Write-Log "Pending request approved successfully."
+
+} catch {
+    # Log the error
+    Write-Log "An error occurred: $_" -Level "ERROR"
+} finally {
+    # End logging
+    Write-Log "Certificate Renewal Script completed."
+}
